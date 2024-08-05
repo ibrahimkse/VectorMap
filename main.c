@@ -132,14 +132,20 @@ void DrawCountryBoundaries(CountryBorder* shape,float screenWidth, float screenH
             if (j + detailDivideCoeff >= shape->ways[i].count) {
                 Vector2 start = GeoToScreen(shape->ways[i].points[j], screenWidth, screenHeight, offset, zoom);
                 Vector2 end = GeoToScreen(shape->ways[i].points[shape->ways[i].count - 1], screenWidth, screenHeight, offset, zoom);
-                DrawLineV(start, end, color);
-                *totalLineCount += 1;
+                if (((start.x >= 0 && start.x <= screenWidth) && (start.y >= 0 && start.y <= screenHeight)) ||
+                    ((end.x >= 0 && end.x <= screenWidth) && (end.y >= 0 && end.y <= screenHeight))) {
+                    DrawLineV(start, end, color);
+                    *totalLineCount += 1;
+                }
             }
             else {
                 Vector2 start = GeoToScreen(shape->ways[i].points[j], screenWidth, screenHeight, offset, zoom);
                 Vector2 end = GeoToScreen(shape->ways[i].points[(j + detailDivideCoeff)], screenWidth, screenHeight, offset, zoom);
-                DrawLineV(start, end, color);
-                *totalLineCount += 1;
+                if (((start.x >= 0 && start.x <= screenWidth) && (start.y >= 0 && start.y <= screenHeight)) ||
+                    ((end.x >= 0 && end.x <= screenWidth) && (end.y >= 0 && end.y <= screenHeight))) {
+                    DrawLineV(start, end, color);
+                    *totalLineCount += 1;
+                }   
             }
         }
     }
