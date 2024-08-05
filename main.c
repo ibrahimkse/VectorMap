@@ -18,6 +18,8 @@ typedef struct {
     int count;
 } CountryBorder;
 
+void setDetailAmount(float zoom, int* detailDivideCoeff);
+
 CountryBorder LoadGeoDataFromXML(const char* filePath) {
     CountryBorder turkiyeBorder = { NULL, 0 };
     XMLDocument doc;
@@ -118,23 +120,83 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
     DrawLineV(screenBottomLeft, screenTopLeft, RED);
 }
 
+void DrawCountryBoundaries(CountryBorder* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
+
+    int detailDivideCoeff;
+    setDetailAmount(zoom, &detailDivideCoeff);
+    
+    // Draw each way
+    for (int i = 0; i < shape->count; i++) {
+        for (int j = 0; j < shape->ways[i].count - 1; j += detailDivideCoeff) {
+
+            if (j + detailDivideCoeff >= shape->ways[i].count) {
+                Vector2 start = GeoToScreen(shape->ways[i].points[j], screenWidth, screenHeight, offset, zoom);
+                Vector2 end = GeoToScreen(shape->ways[i].points[shape->ways[i].count - 1], screenWidth, screenHeight, offset, zoom);
+                DrawLineV(start, end, color);
+                *totalLineCount += 1;
+            }
+            else {
+                Vector2 start = GeoToScreen(shape->ways[i].points[j], screenWidth, screenHeight, offset, zoom);
+                Vector2 end = GeoToScreen(shape->ways[i].points[(j + detailDivideCoeff)], screenWidth, screenHeight, offset, zoom);
+                DrawLineV(start, end, color);
+                *totalLineCount += 1;
+            }
+        }
+    }
+}
+
+void freeShape(CountryBorder* shape) {
+    for (int i = 0; i < shape->count; i++) {
+        free(shape->ways[i].points);  // Free the allocated memory for each way's points
+    }
+    free(shape->ways);  // Free the allocated memory for the ways array
+}
+
+void setDetailAmount(float zoom, int* detailDivideCoeff) {
+    if (zoom <= 1.0f) {
+        *detailDivideCoeff = 100;
+    }
+    else if (zoom <= 5.0f) {
+        *detailDivideCoeff = 50;
+    }
+    else if (zoom <= 10.0f) {
+        *detailDivideCoeff = 20;
+    }
+    else if (zoom <= 20.0f) {
+        *detailDivideCoeff = 10;
+    }
+    else if (zoom <= 50.0f) {
+        *detailDivideCoeff = 5;
+    }
+    else if (zoom <= 100.0f) {
+        *detailDivideCoeff = 2;
+    }
+    else  {
+        *detailDivideCoeff = 1;
+    }
+}
+
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
 int main(void) {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 800;
-    const int screenHeight = 450;
+    const int screenWidth = 1200;
+    const int screenHeight = 675;
     int totalLineCount = 0;
 
     InitWindow(screenWidth, screenHeight, "Vector Map");
 
-    //SetTargetFPS(60);  // Set our game to run at 60 frames-per-second
+    //SetTargetFPS(60);  
     //--------------------------------------------------------------------------------------
 
     // Load geographic vector data from XML file
     CountryBorder shape = LoadGeoDataFromXML("turkey_border1.xml");
+    CountryBorder shape1 = LoadGeoDataFromXML("italy_border1.xml");
+    CountryBorder shape2 = LoadGeoDataFromXML("greece_border1.xml");
+    CountryBorder shape3 = LoadGeoDataFromXML("bulgaria_border1.xml");
+    CountryBorder shape4 = LoadGeoDataFromXML("cyprus_border1.xml");
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -178,21 +240,18 @@ int main(void) {
 
         ClearBackground(BLACK);
 
-        // Draw the world boundaries
         DrawWorldBoundaries(screenWidth, screenHeight, offset, zoom);
         //printf("offset.x = %f\n", offset.x);
         //printf("offset.y = %f\n", offset.y);
 
-        // Draw each way in the vector shape
-        for (int i = 0; i < shape.count; i++) {
-            totalLineCount += shape.ways[i].count - 1;
-            for (int j = 0; j < shape.ways[i].count - 1; j++) {
-                Vector2 start = GeoToScreen(shape.ways[i].points[j], screenWidth, screenHeight, offset, zoom);
-                Vector2 end = GeoToScreen(shape.ways[i].points[(j + 1)], screenWidth, screenHeight, offset, zoom);
-                DrawLineV(start, end, RAYWHITE);
-            }
-        }
+        DrawCountryBoundaries(&shape1, screenWidth, screenHeight, offset, zoom, &totalLineCount, GREEN);
+        DrawCountryBoundaries(&shape2, screenWidth, screenHeight, offset, zoom, &totalLineCount, BLUE);
+        DrawCountryBoundaries(&shape3, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&shape4, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        DrawCountryBoundaries(&shape, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+
         printf("Total line count is: %d\n", totalLineCount);
+
         DrawFPS(10, 10);
         EndDrawing();
         //----------------------------------------------------------------------------------
@@ -200,10 +259,11 @@ int main(void) {
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
-    for (int i = 0; i < shape.count; i++) {
-        free(shape.ways[i].points);  // Free the allocated memory for each way's points
-    }
-    free(shape.ways);  // Free the allocated memory for the ways array
+    freeShape(&shape);
+    freeShape(&shape1);
+    freeShape(&shape2);
+    freeShape(&shape3);
+    freeShape(&shape4);
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 
