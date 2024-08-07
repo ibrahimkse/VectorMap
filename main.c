@@ -203,6 +203,7 @@ int main(void) {
     CountryBorder shape2 = LoadGeoDataFromXML("greece_border1.xml");
     CountryBorder shape3 = LoadGeoDataFromXML("bulgaria_border1.xml");
     CountryBorder shape4 = LoadGeoDataFromXML("cyprus_border1.xml");
+    CountryBorder shape5 = LoadGeoDataFromXML("russia_border1.xml");
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -254,6 +255,7 @@ int main(void) {
         DrawCountryBoundaries(&shape2, screenWidth, screenHeight, offset, zoom, &totalLineCount, BLUE);
         DrawCountryBoundaries(&shape3, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawCountryBoundaries(&shape4, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        DrawCountryBoundaries(&shape5, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
         DrawCountryBoundaries(&shape, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
 
         printf("Total line count is: %d\n", totalLineCount);
@@ -270,6 +272,7 @@ int main(void) {
     freeShape(&shape2);
     freeShape(&shape3);
     freeShape(&shape4);
+    freeShape(&shape5);
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 

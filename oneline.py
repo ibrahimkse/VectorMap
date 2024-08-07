@@ -9,7 +9,7 @@ class FirstPassHandler(osmium.SimpleHandler):
         self.boundary_ways = set()
 
     def relation(self, r):
-        if 'name:tr' in r.tags and r.tags['name:tr'] == 'Kıbrıs':
+        if 'name:tr' in r.tags and r.tags['name:tr'] == 'Rusya Federasyonu':
             self.turkey_relation_id = r.id
             for member in r.members:
                 if member.type == 'w' and member.role == 'outer':
@@ -30,11 +30,11 @@ class SecondPassHandler(osmium.SimpleHandler):
 
 # First pass to get the Turkey relation and boundary ways
 first_pass_handler = FirstPassHandler()
-first_pass_handler.apply_file("C:/Users/DMAP/Downloads/cyprus-latest.osm.pbf", locations=True)
+first_pass_handler.apply_file("C:/Users/DMAP/Downloads/russia-latest.osm.pbf", locations=True)
 
 # Second pass to get the nodes for the boundary ways
 second_pass_handler = SecondPassHandler(first_pass_handler.boundary_ways)
-second_pass_handler.apply_file("C:/Users/DMAP/Downloads/cyprus-latest.osm.pbf", locations=True)
+second_pass_handler.apply_file("C:/Users/DMAP/Downloads/russia-latest.osm.pbf", locations=True)
 
 # Create XML structure
 root = ET.Element("osm")
@@ -53,7 +53,7 @@ xml_str = ET.tostring(root, encoding="utf-8", method="xml")
 xml_str_pretty = xml.dom.minidom.parseString(xml_str).toprettyxml(indent="  ")
 
 # Write the pretty-printed XML to a file
-with open("cyprus_border1.xml", "w", encoding="utf-8") as f:
+with open("russia_border1.xml", "w", encoding="utf-8") as f:
     f.write(xml_str_pretty)
 
 print("XML has been saved")
