@@ -16,13 +16,15 @@ typedef struct {
 typedef struct {
     Way* ways;
     int count;
-} CountryBorder;
+} Shape;
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
 
-CountryBorder LoadGeoDataFromXML(const char* filePath) {
-    CountryBorder turkiyeBorder = { NULL, 0 };
+Shape LoadGeoDataFromXML(const char* filePath) {
+    Shape turkiyeBorder = { NULL, 0 };
     XMLDocument doc;
+    int totalNodeCount = 0;
+
 
     if (!XMLDocument_load(&doc, filePath)) {
         fprintf(stderr, "Failed to load XML file\n");
@@ -42,7 +44,7 @@ CountryBorder LoadGeoDataFromXML(const char* filePath) {
     turkiyeBorder.count = ways->size;
     turkiyeBorder.ways = (Way*)malloc(turkiyeBorder.count * sizeof(Way));
 
-    // Fill turkiye struct
+        // Fill turkiye struct
     for (int i = 0; i < ways->size; i++) {
         XMLNode* way = XMLNodeList_at(ways, i);
         XMLNodeList* nodes = XMLNode_children(way, "node");
@@ -54,11 +56,13 @@ CountryBorder LoadGeoDataFromXML(const char* filePath) {
             XMLNode* node = XMLNodeList_at(nodes, j);
             turkiyeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
             turkiyeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
+            totalNodeCount++;
         }
 
         XMLNodeList_free(nodes);
     }
 
+    printf("total node count: %d\n", totalNodeCount);
     XMLNodeList_free(ways);
     XMLDocument_free(&doc);
     return turkiyeBorder;
@@ -120,7 +124,7 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
     DrawLineV(screenBottomLeft, screenTopLeft, RED);
 }
 
-void DrawCountryBoundaries(CountryBorder* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
+void DrawCountryBoundaries(Shape* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
 
     int detailDivideCoeff;
     setDetailAmount(zoom, &detailDivideCoeff);
@@ -151,7 +155,7 @@ void DrawCountryBoundaries(CountryBorder* shape,float screenWidth, float screenH
     }
 }
 
-void freeShape(CountryBorder* shape) {
+void freeShape(Shape* shape) {
     for (int i = 0; i < shape->count; i++) {
         free(shape->ways[i].points);  // Free the allocated memory for each way's points
     }
@@ -198,12 +202,14 @@ int main(void) {
     //--------------------------------------------------------------------------------------
 
     // Load geographic vector data from XML file
-    CountryBorder shape = LoadGeoDataFromXML("turkey_border1.xml");
-    CountryBorder shape1 = LoadGeoDataFromXML("italy_border1.xml");
-    CountryBorder shape2 = LoadGeoDataFromXML("greece_border1.xml");
-    CountryBorder shape3 = LoadGeoDataFromXML("bulgaria_border1.xml");
-    CountryBorder shape4 = LoadGeoDataFromXML("cyprus_border1.xml");
-    CountryBorder shape5 = LoadGeoDataFromXML("russia_border1.xml");
+    Shape turkiyeBorders = LoadGeoDataFromXML("appData\\turkey_border1.xml");
+    Shape italyBorders = LoadGeoDataFromXML("appData\\italy_border1.xml");
+    Shape greeceBorders = LoadGeoDataFromXML("appData\\greece_border1.xml");
+    Shape bulgariaBorders = LoadGeoDataFromXML("appData\\bulgaria_border1.xml");
+    Shape cyprusBorders = LoadGeoDataFromXML("appData\\cyprus_border1.xml");
+    Shape russiaBorders = LoadGeoDataFromXML("appData\\russia_border1.xml");
+    Shape provinces = LoadGeoDataFromXML("appData\\provinces.xml");
+    Shape rivers = LoadGeoDataFromXML("appData\\rivers.xml");
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -214,6 +220,8 @@ int main(void) {
     Vector2 lastMousePosition = { 0.0f, 0.0f };
     Vector2 currentMousePosition = { 0.0f, 0.0f };
     Vector2 delta = { 0.0f, 0.0f };
+    Color riverColor = { 0, 121, 241, 30 };
+    int riverAlpha;
 
     // Main game loop
     while (!WindowShouldClose()) {  // Detect window close button or ESC key
@@ -239,6 +247,13 @@ int main(void) {
 
         if (GetMouseWheelMove() > 0) zoom *= 1.1f;
         if (GetMouseWheelMove() < 0) zoom /= 1.1f;
+
+        if ((10 * zoom) < 127) {
+            riverColor.a = 10 * zoom;
+        }
+        else {
+            riverColor.a = 127;
+        }
         //----------------------------------------------------------------------------------
 
         // Draw
@@ -251,12 +266,16 @@ int main(void) {
         //printf("offset.x = %f\n", offset.x);
         //printf("offset.y = %f\n", offset.y);
 
-        DrawCountryBoundaries(&shape1, screenWidth, screenHeight, offset, zoom, &totalLineCount, GREEN);
-        DrawCountryBoundaries(&shape2, screenWidth, screenHeight, offset, zoom, &totalLineCount, BLUE);
-        DrawCountryBoundaries(&shape3, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&shape4, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&shape5, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&shape, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        DrawCountryBoundaries(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawCountryBoundaries(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        DrawCountryBoundaries(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+
+        //turkiye border
+        DrawCountryBoundaries(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
 
         printf("Total line count is: %d\n", totalLineCount);
 
@@ -267,12 +286,14 @@ int main(void) {
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
-    freeShape(&shape);
-    freeShape(&shape1);
-    freeShape(&shape2);
-    freeShape(&shape3);
-    freeShape(&shape4);
-    freeShape(&shape5);
+    freeShape(&turkiyeBorders);
+    freeShape(&italyBorders);
+    freeShape(&greeceBorders);
+    freeShape(&bulgariaBorders);
+    freeShape(&cyprusBorders);
+    freeShape(&russiaBorders);
+    freeShape(&provinces);
+    freeShape(&rivers);
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 
