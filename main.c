@@ -1,68 +1,120 @@
-#define _CRT_SECURE_NO_DEPRECATE
+﻿#define _CRT_SECURE_NO_DEPRECATE
 #include "raylib.h"
 #include "lxml.h"
 #include <stdlib.h>
+#include "DataManagement.h"
+#include <stdint.h>
+//#include "Types.h"
 
-typedef struct {
-    double latitude;
-    double longitude;
-} LatLon64;
 
-typedef struct {
-    LatLon64* points;
-    int count;
-} Way;
-
-typedef struct {
-    Way* ways;
-    int count;
-} CountryBorder;
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
 
-CountryBorder LoadGeoDataFromXML(const char* filePath) {
-    CountryBorder turkiyeBorder = { NULL, 0 };
+Metadata LoadGeoDataFromXML(const char* filePath) {
     XMLDocument doc;
+    Relations relationList = { 0 };
+    Ways2 wayList = { 0 };
+    Nodes nodes = { 0 };
+    Metadata metadata = { 0 };
 
     if (!XMLDocument_load(&doc, filePath)) {
         fprintf(stderr, "Failed to load XML file\n");
-        return turkiyeBorder;
+        return metadata;
     }
 
     XMLNode* osm = XMLNodeList_at(&doc.root->children, 0);
 
-    // Find all way elements
-    XMLNodeList* ways = XMLNode_children(osm, "way");
-    if (ways->size == 0) {
-        fprintf(stderr, "No 'way' elements found\n");
+    //Relation operations Start
+    XMLNodeList* relationNodeList = XMLNode_children(osm, "relation");
+    if (relationNodeList->size == 0) {
+        fprintf(stderr, "No 'relation' elements found\n");
         XMLDocument_free(&doc);
-        return turkiyeBorder;
+        //return relationList;
     }
 
-    turkiyeBorder.count = ways->size;
-    turkiyeBorder.ways = (Way*)malloc(turkiyeBorder.count * sizeof(Way));
+    relationList.count = relationNodeList->size;
+    relationList.relations = (Relation*)malloc(relationList.count * sizeof(Relation));
 
-    // Fill turkiye struct
-    for (int i = 0; i < ways->size; i++) {
-        XMLNode* way = XMLNodeList_at(ways, i);
-        XMLNodeList* nodes = XMLNode_children(way, "node");
-
-        turkiyeBorder.ways[i].count = nodes->size;
-        turkiyeBorder.ways[i].points = (LatLon64*)malloc(nodes->size * sizeof(LatLon64));
-
-        for (int j = 0; j < nodes->size; j++) {
-            XMLNode* node = XMLNodeList_at(nodes, j);
-            turkiyeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
-            turkiyeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
+    for (int i = 0; i < relationList.count; i++) {//member ve tag için yapılacak
+        XMLNode* relation = XMLNodeList_at(relationNodeList, i);
+        XMLNodeList* memberNodes = XMLNode_children(relation, "member");
+        XMLNodeList* tagNodes = XMLNode_children(relation, "tag");
+        //relationList.relations[i].id= atoi(XMLNode_attr_val(relation, "id"));
+        relationList.relations[i].memberCount = memberNodes->size;
+        relationList.relations[i].members = (Member*)malloc(memberNodes->size * sizeof(Member));
+        for (int j = 0; j < memberNodes->size; j++) {
+            XMLNode* member = XMLNodeList_at(memberNodes, j);
+            relationList.relations[i].members[j].ref = atoi(XMLNode_attr_val(member, "ref"));
+            relationList.relations[i].members[j].role = XMLNode_attr_val(member, "role");
+            relationList.relations[i].members[j].type = XMLNode_attr_val(member, "type");
         }
 
-        XMLNodeList_free(nodes);
+        relationList.relations[i].tagCount = tagNodes->size;
+        relationList.relations[i].tags = (Tag*)malloc(tagNodes->size * sizeof(Tag));
+        for (int t = 0; t < tagNodes->size; t++) {
+            XMLNode* tag = XMLNodeList_at(tagNodes, t);
+            relationList.relations[i].tags[t].k= XMLNode_attr_val(tag, "k");
+            relationList.relations[i].tags[t].v= XMLNode_attr_val(tag, "v");
+        }
+
+        XMLNodeList_free(memberNodes);
+        XMLNodeList_free(tagNodes);
+    }
+    //Relation operations End
+
+    XMLNodeList* wayNodeList = XMLNode_children(osm, "way");
+    if (wayNodeList->size == 0) {
+        fprintf(stderr, "No 'way' elements found\n");
+        XMLDocument_free(&doc);
+        //return relationList;
+    }
+    wayList.count = wayNodeList->size;
+    wayList.ways = (Way2*)malloc(wayList.count * sizeof(Way2));
+
+    for (int i = 0; i < wayList.count; i++) {
+        XMLNode* wayNode = XMLNodeList_at(wayNodeList, i);
+        XMLNodeList* ndNodeList = XMLNode_children(wayNode, "nd");
+        XMLNodeList* tagNodeList = XMLNode_children(wayNode, "tag");
+        wayList.ways[i].id= atoi(XMLNode_attr_val(wayNode, "id"));
+
+        wayList.ways[i].countNd = ndNodeList->size;
+        wayList.ways[i].countTag = tagNodeList->size;
+        wayList.ways[i].nd_ids = (int64_t*)malloc(wayList.ways[i].countNd * sizeof(int64_t));
+        wayList.ways[i].tags = (Tag*)malloc(wayList.ways[i].countTag * sizeof(Tag));
+        for (int j = 0; j < wayList.ways[i].countTag; j++) {
+            XMLNode* tag = XMLNodeList_at(tagNodeList, j);
+            wayList.ways[i].tags[j].k= XMLNode_attr_val(tag, "k");
+            wayList.ways[i].tags[j].v= XMLNode_attr_val(tag, "v");
+        }
+        for (int j = 0; j < wayList.ways[i].countNd; j++) {
+            XMLNode* nd= XMLNodeList_at(ndNodeList, j);
+            wayList.ways[i].nd_ids[j]=atoll(XMLNode_attr_val(nd, "ref"));
+        }
     }
 
-    XMLNodeList_free(ways);
+    metadata.relations = relationList;
+    metadata.ways = wayList;
+    XMLNodeList* nodeNodeList = XMLNode_children(osm, "node");
+    if (nodeNodeList->size == 0) {
+        fprintf(stderr, "No 'way' elements found\n");
+        XMLDocument_free(&doc);
+        //return relationList;
+    }
+    nodes.count = nodeNodeList->size;
+    nodes.nodes = (Node*)malloc(nodes.count * sizeof(Node));
+    for (int i = 0; i < nodes.count; i++) {
+        XMLNode* nodeNode = XMLNodeList_at(nodeNodeList, i);
+        nodes.nodes[i].id = atoll(XMLNode_attr_val(nodeNode, "id"));
+        nodes.nodes[i].lon = atof(XMLNode_attr_val(nodeNode, "lon"));
+        nodes.nodes[i].lat = atof(XMLNode_attr_val(nodeNode, "lat"));
+    }
+    metadata.nodes = nodes;
+    //XMLNodeList_free(ways);
+
     XMLDocument_free(&doc);
-    return turkiyeBorder;
+    return metadata;
 }
+
 
 // Function to convert geographic coordinates to screen coordinates
 Vector2 GeoToScreen(LatLon64 point, float screenWidth, float screenHeight, Vector2 offset, float zoom) {
@@ -198,12 +250,11 @@ int main(void) {
     //--------------------------------------------------------------------------------------
 
     // Load geographic vector data from XML file
-    CountryBorder shape = LoadGeoDataFromXML("turkey_border1.xml");
-    CountryBorder shape1 = LoadGeoDataFromXML("italy_border1.xml");
-    CountryBorder shape2 = LoadGeoDataFromXML("greece_border1.xml");
-    CountryBorder shape3 = LoadGeoDataFromXML("bulgaria_border1.xml");
-    CountryBorder shape4 = LoadGeoDataFromXML("cyprus_border1.xml");
-    CountryBorder shape5 = LoadGeoDataFromXML("russia_border1.xml");
+    printf("Read op has been started\n");
+    Metadata shape = LoadGeoDataFromXML("turkiye.xml");
+    loadRivers(&shape);
+    printf("Read op has been finished\n");
+
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -251,14 +302,15 @@ int main(void) {
         //printf("offset.x = %f\n", offset.x);
         //printf("offset.y = %f\n", offset.y);
 
-        DrawCountryBoundaries(&shape1, screenWidth, screenHeight, offset, zoom, &totalLineCount, GREEN);
-        DrawCountryBoundaries(&shape2, screenWidth, screenHeight, offset, zoom, &totalLineCount, BLUE);
-        DrawCountryBoundaries(&shape3, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&shape4, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&shape5, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&shape, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        //DrawCountryBoundaries(&shape1, screenWidth, screenHeight, offset, zoom, &totalLineCount, GREEN);
+        //DrawCountryBoundaries(&shape2, screenWidth, screenHeight, offset, zoom, &totalLineCount, BLUE);
+        //DrawCountryBoundaries(&shape3, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&shape4, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        //DrawCountryBoundaries(&shape5, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        //DrawCountryBoundaries(&shape, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
 
-        printf("Total line count is: %d\n", totalLineCount);
+        //printf("Total line count is: %d\n", totalLineCount);
+        printf("%d\n",shape.relations.count);
 
         DrawFPS(10, 10);
         EndDrawing();
@@ -267,12 +319,12 @@ int main(void) {
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
-    freeShape(&shape);
-    freeShape(&shape1);
-    freeShape(&shape2);
-    freeShape(&shape3);
-    freeShape(&shape4);
-    freeShape(&shape5);
+    //freeShape(&shape);
+    //freeShape(&shape1);
+    //freeShape(&shape2);
+    //freeShape(&shape3);
+    //freeShape(&shape4);
+    //freeShape(&shape5);
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 
