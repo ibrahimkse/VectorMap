@@ -415,7 +415,10 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
             lex[lexi++] = buf[i++];
         }
     }
-
+    printf("sizeofbuf:%d", sizeof(curr_node));
+    XMLNode_free(curr_node);
+    free(buf);
+    free(file);
     return TRUE;
 }
 

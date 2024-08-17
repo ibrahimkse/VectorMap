@@ -57,12 +57,14 @@ Shape LoadGeoDataFromXML(const char* filePath) {
             turkiyeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
             turkiyeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
             totalNodeCount++;
+            XMLNode_free(node);
         }
-
+        XMLNode_free(way);
         XMLNodeList_free(nodes);
     }
 
     printf("total node count: %d\n", totalNodeCount);
+    XMLNode_free(osm);
     XMLNodeList_free(ways);
     XMLDocument_free(&doc);
     return turkiyeBorder;
