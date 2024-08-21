@@ -20,24 +20,24 @@ typedef struct {
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
 
-Shape LoadGeoDataFromXML(const char* filePath) {
+Shape LoadGeoDataFromXML(const char* filePath, XMLDocument* doc) {
     Shape turkiyeBorder = { NULL, 0 };
-    XMLDocument doc;
+    //XMLDocument doc;
     int totalNodeCount = 0;
 
 
-    if (!XMLDocument_load(&doc, filePath)) {
+    if (!XMLDocument_load(doc, filePath)) {
         fprintf(stderr, "Failed to load XML file\n");
         return turkiyeBorder;
     }
 
-    XMLNode* osm = XMLNodeList_at(&doc.root->children, 0);
+    XMLNode* osm = XMLNodeList_at(&doc->root->children, 0);
 
     // Find all way elements
     XMLNodeList* ways = XMLNode_children(osm, "way");
     if (ways->size == 0) {
         fprintf(stderr, "No 'way' elements found\n");
-        XMLDocument_free(&doc);
+        XMLDocument_free(doc);
         return turkiyeBorder;
     }
 
@@ -57,16 +57,18 @@ Shape LoadGeoDataFromXML(const char* filePath) {
             turkiyeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
             turkiyeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
             totalNodeCount++;
-            XMLNode_free(node);
+            //XMLNode_free(node);
         }
-        XMLNode_free(way);
-        XMLNodeList_free(nodes);
+        //XMLNode_free(way);
+        //XMLNodeList_free(nodes);
     }
 
     printf("total node count: %d\n", totalNodeCount);
-    XMLNode_free(osm);
-    XMLNodeList_free(ways);
-    XMLDocument_free(&doc);
+    //XMLNode_free(osm);
+    //XMLNodeList_free(ways);
+    XMLDocument_free(doc);
+
+
     return turkiyeBorder;
 }
 
@@ -198,20 +200,23 @@ int main(void) {
     const int screenHeight = 675;
     int totalLineCount = 0;
 
+    XMLDocument doc;
+
     InitWindow(screenWidth, screenHeight, "Vector Map");
 
     //SetTargetFPS(60);  
     //--------------------------------------------------------------------------------------
 
     // Load geographic vector data from XML file
-    Shape turkiyeBorders = LoadGeoDataFromXML("appData\\turkey_border1.xml");
-    Shape italyBorders = LoadGeoDataFromXML("appData\\italy_border1.xml");
-    Shape greeceBorders = LoadGeoDataFromXML("appData\\greece_border1.xml");
-    Shape bulgariaBorders = LoadGeoDataFromXML("appData\\bulgaria_border1.xml");
-    Shape cyprusBorders = LoadGeoDataFromXML("appData\\cyprus_border1.xml");
-    Shape russiaBorders = LoadGeoDataFromXML("appData\\russia_border1.xml");
-    Shape provinces = LoadGeoDataFromXML("appData\\provinces.xml");
-    Shape rivers = LoadGeoDataFromXML("appData\\rivers.xml");
+    Shape turkiyeBorders = LoadGeoDataFromXML("appData\\turkey_border1.xml", &doc);
+    Shape italyBorders = LoadGeoDataFromXML("appData\\italy_border1.xml", &doc);
+    Shape greeceBorders = LoadGeoDataFromXML("appData\\greece_border1.xml", &doc);
+    Shape bulgariaBorders = LoadGeoDataFromXML("appData\\bulgaria_border1.xml", &doc);
+    Shape cyprusBorders = LoadGeoDataFromXML("appData\\cyprus_border1.xml", &doc);
+    Shape russiaBorders = LoadGeoDataFromXML("appData\\russia_border1.xml", &doc);
+    Shape provinces = LoadGeoDataFromXML("appData\\provinces.xml", &doc);
+    Shape rivers = LoadGeoDataFromXML("appData\\rivers.xml", &doc);
+    Shape s = LoadGeoDataFromXML("appData\\short.xml", &doc);
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -268,18 +273,19 @@ int main(void) {
         //printf("offset.x = %f\n", offset.x);
         //printf("offset.y = %f\n", offset.y);
 
-        DrawCountryBoundaries(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+        //DrawCountryBoundaries(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        //DrawCountryBoundaries(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        //DrawCountryBoundaries(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+        DrawCountryBoundaries(&s, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
 
         //turkiye border
-        DrawCountryBoundaries(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        //DrawCountryBoundaries(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
 
-        printf("Total line count is: %d\n", totalLineCount);
+        //printf("Total line count is: %d\n", totalLineCount);
 
         DrawFPS(10, 10);
         EndDrawing();
@@ -288,14 +294,14 @@ int main(void) {
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
-    freeShape(&turkiyeBorders);
-    freeShape(&italyBorders);
-    freeShape(&greeceBorders);
-    freeShape(&bulgariaBorders);
-    freeShape(&cyprusBorders);
-    freeShape(&russiaBorders);
-    freeShape(&provinces);
-    freeShape(&rivers);
+    //freeShape(&turkiyeBorders);
+    //freeShape(&italyBorders);
+    //freeShape(&greeceBorders);
+    //freeShape(&bulgariaBorders);
+    //freeShape(&cyprusBorders);
+    //freeShape(&russiaBorders);
+    //freeShape(&provinces);
+    //freeShape(&rivers);
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 

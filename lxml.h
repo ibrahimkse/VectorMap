@@ -6,10 +6,10 @@
 #include <string.h>
 
 #ifndef TRUE
-    #define TRUE 1
+#define TRUE 1
 #endif
 #ifndef FALSE
-    #define FALSE 0
+#define FALSE 0
 #endif
 
 //
@@ -51,6 +51,7 @@ typedef struct _XMLAttributeList XMLAttributeList;
 
 void XMLAttributeList_init(XMLAttributeList* list);
 void XMLAttributeList_add(XMLAttributeList* list, XMLAttribute* attr);
+void XMLAttributeList_free(XMLAttributeList* list);
 
 struct _XMLNodeList
 {
@@ -100,39 +101,59 @@ void XMLDocument_free(XMLDocument* doc);
 
 void XMLAttribute_free(XMLAttribute* attr)
 {
-    free(attr->key);
-    free(attr->value);
+    if (attr != NULL)
+    {
+        free(attr->key);
+        free(attr->value);
+        attr->key = attr->value = NULL;
+
+    }
 }
 
 void XMLAttributeList_init(XMLAttributeList* list)
 {
     list->heap_size = 1;
     list->size = 0;
-    list->data = (XMLAttribute*) malloc(sizeof(XMLAttribute) * list->heap_size);
+    list->data = (XMLAttribute*)malloc(sizeof(XMLAttribute) * list->heap_size);
 }
 
 void XMLAttributeList_add(XMLAttributeList* list, XMLAttribute* attr)
 {
     while (list->size >= list->heap_size) {
         list->heap_size *= 2;
-        list->data = (XMLAttribute*) realloc(list->data, sizeof(XMLAttribute) * list->heap_size);
+        list->data = (XMLAttribute*)realloc(list->data, sizeof(XMLAttribute) * list->heap_size);
     }
 
     list->data[list->size++] = *attr;
+}
+
+void XMLAttributeList_free(XMLAttributeList* list)
+{
+    if (NULL != list)
+    {
+        int i = 0;
+        for (; i < list->size; ++i)
+            XMLAttribute_free(&list->data[i]);
+
+        free(list->data);
+        list->data = NULL;
+
+        memset(list, '\0', sizeof(XMLAttributeList));
+    }
 }
 
 void XMLNodeList_init(XMLNodeList* list)
 {
     list->heap_size = 1;
     list->size = 0;
-    list->data = (XMLNode**) malloc(sizeof(XMLNode*) * list->heap_size);
+    list->data = (XMLNode**)malloc(sizeof(XMLNode*) * list->heap_size);
 }
 
 void XMLNodeList_add(XMLNodeList* list, XMLNode* node)
 {
     while (list->size >= list->heap_size) {
         list->heap_size *= 2;
-        list->data = (XMLNode**) realloc(list->data, sizeof(XMLNode*) * list->heap_size);
+        list->data = (XMLNode**)realloc(list->data, sizeof(XMLNode*) * list->heap_size);
     }
 
     list->data[list->size++] = node;
@@ -145,12 +166,24 @@ XMLNode* XMLNodeList_at(XMLNodeList* list, int index)
 
 void XMLNodeList_free(XMLNodeList* list)
 {
-    free(list);
+    if (NULL != list)
+    {
+        for (int i = 0; i < list->size; ++i) {
+            XMLNode_free(list->data[i]);
+            free(list->data[i]);
+            list->data[i] = NULL;
+        }
+
+        free(list->data);
+        list->data = NULL;
+
+        memset(list, '\0', sizeof(XMLNodeList));
+    }
 }
 
 XMLNode* XMLNode_new(XMLNode* parent)
 {
-    XMLNode* node = (XMLNode*) malloc(sizeof(XMLNode));
+    XMLNode* node = (XMLNode*)malloc(sizeof(XMLNode));
     node->parent = parent;
     node->tag = NULL;
     node->inner_text = NULL;
@@ -161,29 +194,38 @@ XMLNode* XMLNode_new(XMLNode* parent)
     return node;
 }
 
-void XMLNode_free(XMLNode* node)
-{
-    if (node->tag)
-        free(node->tag);
-    if (node->inner_text)
-        free(node->inner_text);
-    for (int i = 0; i < node->attributes.size; i++)
-        XMLAttribute_free(&node->attributes.data[i]);
-    free(node);
+void XMLNode_free(XMLNode* node) {
+    if (NULL != node) {
+        if (node->tag) {
+            free(node->tag);
+            node->tag = NULL;
+        }
+
+        if (node->inner_text) {
+            free(node->inner_text);
+            node->inner_text = NULL;
+        }
+
+        XMLAttributeList_free(&node->attributes);
+        XMLNodeList_free(&node->children);
+        memset(node, '\0', sizeof(XMLNode));
+    }
 }
 
 XMLNode* XMLNode_child(XMLNode* parent, int index)
 {
-    return parent->children.data[index];
+    return (NULL != parent && parent->children.size > index) ? parent->children.data[index] : NULL;
 }
 
 XMLNodeList* XMLNode_children(XMLNode* parent, const char* tag)
 {
-    XMLNodeList* list = (XMLNodeList*) malloc(sizeof(XMLNodeList));
+    XMLNodeList* list = (XMLNodeList*)malloc(sizeof(XMLNodeList));
     XMLNodeList_init(list);
 
-    for (int i = 0; i < parent->children.size; i++) {
+    for (int i = 0; i < parent->children.size; i++)
+    {
         XMLNode* child = parent->children.data[i];
+
         if (!strcmp(child->tag, tag))
             XMLNodeList_add(list, child);
     }
@@ -193,12 +235,26 @@ XMLNodeList* XMLNode_children(XMLNode* parent, const char* tag)
 
 char* XMLNode_attr_val(XMLNode* node, char* key)
 {
-    for (int i = 0; i < node->attributes.size; i++) {
-        XMLAttribute attr = node->attributes.data[i];
-        if (!strcmp(attr.key, key))
-            return attr.value;
+    char* attrVal = NULL;
+
+    if (NULL != node && NULL != key)
+    {
+        for (int i = 0; i < node->attributes.size; i++)
+        {
+            XMLAttribute attr = node->attributes.data[i];
+            if (!strcmp(attr.key, key)) {
+                size_t keyStrLen = strlen(attr.key);
+                attrVal = calloc(keyStrLen, sizeof(char));
+
+                if (NULL != attrVal)
+                    strcpy(attrVal, attr.value);
+
+                break;
+            }
+        }
     }
-    return NULL;
+
+    return attrVal;
 }
 
 XMLAttribute* XMLNode_attr(XMLNode* node, char* key)
@@ -220,7 +276,7 @@ typedef enum _TagType TagType;
 
 static TagType parse_attrs(char* buf, int* i, char* lex, int* lexi, XMLNode* curr_node)
 {
-    XMLAttribute curr_attr = {0, 0};
+    XMLAttribute curr_attr = { 0, 0 };
     while (buf[*i] != '>') {
         lex[(*lexi)++] = buf[(*i)++];
 
@@ -234,7 +290,7 @@ static TagType parse_attrs(char* buf, int* i, char* lex, int* lexi, XMLNode* cur
         }
 
         // Usually ignore spaces
-        if (lex[*lexi-1] == ' ') {
+        if (lex[*lexi - 1] == ' ') {
             (*lexi)--;
         }
 
@@ -293,7 +349,7 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
     int size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    char* buf = (char*) malloc(sizeof(char) * size + 1);
+    char* buf = (char*)malloc(sizeof(char) * size + 1);
     fread(buf, 1, size, file);
     fclose(file);
     buf[size] = '\0';
@@ -324,7 +380,9 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
                     return FALSE;
                 }
 
-                curr_node->inner_text = _strdup(lex);
+                if (NULL == curr_node->inner_text)
+                    curr_node->inner_text = _strdup(lex);
+
                 lexi = 0;
             }
 
@@ -348,6 +406,7 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
                 //self check for end of file
                 if (!strcmp(curr_node->tag, closer)) {
                     buf[i + 1] == '\0';
+                    free(buf);
                     return TRUE;
                 }
 
@@ -387,6 +446,10 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
 
                     doc->version = XMLNode_attr_val(desc, "version");
                     doc->encoding = XMLNode_attr_val(desc, "encoding");
+
+                    XMLNode_free(desc);
+                    free(desc);
+                    desc = NULL;
                     continue;
                 }
             }
@@ -411,14 +474,15 @@ int XMLDocument_load(XMLDocument* doc, const char* path)
             lexi = 0;
             i++;
             continue;
-        } else {
+        }
+        else {
             lex[lexi++] = buf[i++];
         }
     }
-    printf("sizeofbuf:%d", sizeof(curr_node));
-    XMLNode_free(curr_node);
+
+
     free(buf);
-    free(file);
+
     return TRUE;
 }
 
@@ -428,8 +492,8 @@ static void node_out(FILE* file, XMLNode* node, int indent, int times)
         XMLNode* child = node->children.data[i];
 
         if (times > 0)
-            fprintf(file, "%0*s", indent * times, " ");
-        
+            fprintf(file, "%*s", indent * times, " ");
+
         fprintf(file, "<%s", child->tag);
         for (int i = 0; i < child->attributes.size; i++) {
             XMLAttribute attr = child->attributes.data[i];
@@ -448,7 +512,7 @@ static void node_out(FILE* file, XMLNode* node, int indent, int times)
                 fprintf(file, "\n");
                 node_out(file, child, indent, times + 1);
                 if (times > 0)
-                    fprintf(file, "%0*s", indent * times, " ");
+                    fprintf(file, "%*s", indent * times, " ");
                 fprintf(file, "</%s>\n", child->tag);
             }
         }
@@ -470,11 +534,23 @@ int XMLDocument_write(XMLDocument* doc, const char* path, int indent)
     );
     node_out(file, doc->root, indent, 0);
     fclose(file);
+
+    return TRUE;
 }
 
 void XMLDocument_free(XMLDocument* doc)
 {
-    XMLNode_free(doc->root);
+    if (NULL != doc)
+    {
+        XMLNode_free(doc->root);
+        free(doc->root);
+        doc->root = NULL;
+
+        free(doc->version);
+        free(doc->encoding);
+
+        doc->version = doc->encoding = NULL;
+    }
 }
 
 #endif // LITTLE_XML_H
