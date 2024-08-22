@@ -124,7 +124,7 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
     DrawLineV(screenBottomLeft, screenTopLeft, RED);
 }
 
-void DrawCountryBoundaries(Shape* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
+void DrawShape(Shape* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
 
     int detailDivideCoeff;
     setDetailAmount(zoom, &detailDivideCoeff);
@@ -266,16 +266,16 @@ int main(void) {
         //printf("offset.x = %f\n", offset.x);
         //printf("offset.y = %f\n", offset.y);
 
-        DrawCountryBoundaries(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawCountryBoundaries(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawCountryBoundaries(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+        DrawShape(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShape(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShape(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShape(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShape(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShape(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        DrawShape(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
 
         //turkiye border
-        DrawCountryBoundaries(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        DrawShape(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
 
         printf("Total line count is: %d\n", totalLineCount);
 
