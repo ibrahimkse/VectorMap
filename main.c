@@ -1,7 +1,8 @@
-#define _CRT_SECURE_NO_DEPRECATE
+﻿#define _CRT_SECURE_NO_DEPRECATE
 #include "raylib.h"
 #include "lxml.h"
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct {
     double latitude;
@@ -10,21 +11,21 @@ typedef struct {
 
 typedef struct {
     LatLon64* points;
-    int count;
+    int32_t count;
 } Way;
 
 typedef struct {
     Way* ways;
-    int count;
+    int32_t count;
 } Shape;
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
 
+//Old method. Won't be used anymore
 Shape LoadGeoDataFromXML(const char* filePath) {
     Shape turkiyeBorder = { NULL, 0 };
     XMLDocument doc;
     int totalNodeCount = 0;
-
 
     if (!XMLDocument_load(&doc, filePath)) {
         fprintf(stderr, "Failed to load XML file\n");
@@ -44,7 +45,7 @@ Shape LoadGeoDataFromXML(const char* filePath) {
     turkiyeBorder.count = ways->size;
     turkiyeBorder.ways = (Way*)malloc(turkiyeBorder.count * sizeof(Way));
 
-        // Fill turkiye struct
+    // Fill turkiye struct
     for (int i = 0; i < ways->size; i++) {
         XMLNode* way = XMLNodeList_at(ways, i);
         XMLNodeList* nodes = XMLNode_children(way, "node");
@@ -66,6 +67,48 @@ Shape LoadGeoDataFromXML(const char* filePath) {
     XMLNodeList_free(ways);
     XMLDocument_free(&doc);
     return turkiyeBorder;
+}
+
+void writeBinaryFile(const char* filename, Shape* shape) {
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        perror("File opening failed");
+        return;
+    }
+
+    // Write the way count in the Shape
+    fwrite(&shape->count, sizeof(int32_t), 1, file);
+    // Write the data for all ways
+    for (int i = 0; i < shape->count; i++) {
+        // Write the node count for the way
+        fwrite(&shape->ways[i].count, sizeof(int32_t), 1, file);
+        // Write LatLon64 array
+        fwrite(shape->ways[i].points, sizeof(LatLon64), shape->ways[i].count, file);
+    }
+
+    fclose(file);
+}
+
+void readBinaryFile(const char* filename, Shape* shape) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        perror("File opening failed");
+        return;
+    }
+    // Read the way count in the shape
+    fread(&shape->count, sizeof(int), 1, file);
+    // Allocate memory for shape
+    shape->ways = (Way*)malloc(shape->count * sizeof(Way));
+    // Read the data for every way
+    for (int i = 0; i < shape->count; i++) {
+        // Read the point count for every road
+        fread(&shape->ways[i].count, sizeof(int32_t), 1, file);
+        // Allocate memory for LatLon64
+        shape->ways[i].points = (LatLon64*)malloc(shape->ways[i].count * sizeof(LatLon64));
+        // Read LatLon64 array
+        fread(shape->ways[i].points, sizeof(LatLon64), shape->ways[i].count, file);
+    }
+    fclose(file);
 }
 
 // Function to convert geographic coordinates to screen coordinates
@@ -201,15 +244,41 @@ int main(void) {
     //SetTargetFPS(60);  
     //--------------------------------------------------------------------------------------
 
-    // Load geographic vector data from XML file
-    Shape turkiyeBorders = LoadGeoDataFromXML("appData\\turkey_border1.xml");
+    // Convert geographical XML data files to binary files
+    /*Shape turkiyeBorders = LoadGeoDataFromXML("appData\\turkey_border1.xml");
+    writeBinaryFile("turkiye_border.bin", &turkiyeBorders);
     Shape italyBorders = LoadGeoDataFromXML("appData\\italy_border1.xml");
+    writeBinaryFile("italy_border.bin", &italyBorders);
     Shape greeceBorders = LoadGeoDataFromXML("appData\\greece_border1.xml");
+    writeBinaryFile("greece_border.bin", &greeceBorders);
     Shape bulgariaBorders = LoadGeoDataFromXML("appData\\bulgaria_border1.xml");
+    writeBinaryFile("bulgaria_border.bin", &bulgariaBorders);
     Shape cyprusBorders = LoadGeoDataFromXML("appData\\cyprus_border1.xml");
+    writeBinaryFile("cyprus_border.bin", &cyprusBorders);
     Shape russiaBorders = LoadGeoDataFromXML("appData\\russia_border1.xml");
+    writeBinaryFile("russia_border.bin", &russiaBorders);
     Shape provinces = LoadGeoDataFromXML("appData\\provinces.xml");
+    writeBinaryFile("provinces.bin", &provinces);
     Shape rivers = LoadGeoDataFromXML("appData\\rivers.xml");
+    writeBinaryFile("rivers.bin", &rivers);*/
+
+    // Read every binary file
+    Shape turkiyeBorders;
+    readBinaryFile("turkiye_border.bin", &turkiyeBorders);
+    Shape italyBorders;
+    readBinaryFile("italy_border.bin", &italyBorders);
+    Shape greeceBorders;
+    readBinaryFile("greece_border.bin", &greeceBorders);
+    Shape bulgariaBorders;
+    readBinaryFile("bulgaria_border.bin", &bulgariaBorders);
+    Shape cyprusBorders;
+    readBinaryFile("cyprus_border.bin", &cyprusBorders);
+    Shape russiaBorders;
+    readBinaryFile("russia_border.bin", &russiaBorders);
+    Shape provinces;
+    readBinaryFile("provinces.bin", &provinces);
+    Shape rivers;
+    readBinaryFile("rivers.bin", &rivers);
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -263,8 +332,8 @@ int main(void) {
         ClearBackground(BLACK);
 
         DrawWorldBoundaries(screenWidth, screenHeight, offset, zoom);
-        //printf("offset.x = %f\n", offset.x);
-        //printf("offset.y = %f\n", offset.y);
+        printf("offset.x = %f\n", offset.x);
+        printf("offset.y = %f\n", offset.y);
 
         DrawShape(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
