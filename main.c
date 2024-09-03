@@ -1,35 +1,25 @@
 ﻿#define _CRT_SECURE_NO_DEPRECATE
 #include "raylib.h"
 #include "lxml.h"
+#include "rtree.h"
 #include <stdlib.h>
 #include <stdint.h>
+#include <float.h>
+#include <math.h>
 
-typedef struct {
-    double latitude;
-    double longitude;
-} LatLon64;
-
-typedef struct {
-    LatLon64* points;
-    int32_t count;
-} Way;
-
-typedef struct {
-    Way* ways;
-    int32_t count;
-} Shape;
+#include "datatypes.h"
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
+struct Node* readTreeNode(FILE* file, struct Rtree* tree);
 
-//Old method. Won't be used anymore
 Shape LoadGeoDataFromXML(const char* filePath) {
-    Shape turkiyeBorder = { NULL, 0 };
+    Shape shapeBorder = { NULL, 0 };
     XMLDocument doc;
     int totalNodeCount = 0;
 
     if (!XMLDocument_load(&doc, filePath)) {
         fprintf(stderr, "Failed to load XML file\n");
-        return turkiyeBorder;
+        return shapeBorder;
     }
 
     XMLNode* osm = XMLNodeList_at(&doc.root->children, 0);
@@ -39,24 +29,24 @@ Shape LoadGeoDataFromXML(const char* filePath) {
     if (ways->size == 0) {
         fprintf(stderr, "No 'way' elements found\n");
         XMLDocument_free(&doc);
-        return turkiyeBorder;
+        return shapeBorder;
     }
 
-    turkiyeBorder.count = ways->size;
-    turkiyeBorder.ways = (Way*)malloc(turkiyeBorder.count * sizeof(Way));
+    shapeBorder.count = ways->size;
+    shapeBorder.ways = (Way*)malloc(shapeBorder.count * sizeof(Way));
 
-    // Fill turkiye struct
+    // Fill shape struct
     for (int i = 0; i < ways->size; i++) {
         XMLNode* way = XMLNodeList_at(ways, i);
         XMLNodeList* nodes = XMLNode_children(way, "node");
 
-        turkiyeBorder.ways[i].count = nodes->size;
-        turkiyeBorder.ways[i].points = (LatLon64*)malloc(nodes->size * sizeof(LatLon64));
+        shapeBorder.ways[i].count = nodes->size;
+        shapeBorder.ways[i].points = (LatLon64*)malloc(nodes->size * sizeof(LatLon64));
 
         for (int j = 0; j < nodes->size; j++) {
             XMLNode* node = XMLNodeList_at(nodes, j);
-            turkiyeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
-            turkiyeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
+            shapeBorder.ways[i].points[j].latitude = atof(XMLNode_attr_val(node, "lat"));
+            shapeBorder.ways[i].points[j].longitude = atof(XMLNode_attr_val(node, "lon"));
             totalNodeCount++;
         }
 
@@ -66,7 +56,18 @@ Shape LoadGeoDataFromXML(const char* filePath) {
     printf("total node count: %d\n", totalNodeCount);
     XMLNodeList_free(ways);
     XMLDocument_free(&doc);
-    return turkiyeBorder;
+    return shapeBorder;
+}
+
+struct Rect convertWayToRect(Way* way) {
+    struct Rect mbr = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
+    for (int i = 0; i < way->count; i++) {
+        if (way->points[i].latitude < mbr.min[1]) mbr.min[1] = way->points[i].latitude;
+        if (way->points[i].longitude < mbr.min[0]) mbr.min[0] = way->points[i].longitude;
+        if (way->points[i].latitude > mbr.max[1]) mbr.max[1] = way->points[i].latitude;
+        if (way->points[i].longitude > mbr.max[0]) mbr.max[0] = way->points[i].longitude;
+    }
+    return mbr;
 }
 
 void writeBinaryFile(const char* filename, Shape* shape) {
@@ -95,20 +96,148 @@ void readBinaryFile(const char* filename, Shape* shape) {
         perror("File opening failed");
         return;
     }
-    // Read the way count in the shape
+
     fread(&shape->count, sizeof(int), 1, file);
-    // Allocate memory for shape
     shape->ways = (Way*)malloc(shape->count * sizeof(Way));
-    // Read the data for every way
-    for (int i = 0; i < shape->count; i++) {
-        // Read the point count for every road
+    for (int32_t i = 0; i < shape->count; i++) {
         fread(&shape->ways[i].count, sizeof(int32_t), 1, file);
-        // Allocate memory for LatLon64
         shape->ways[i].points = (LatLon64*)malloc(shape->ways[i].count * sizeof(LatLon64));
-        // Read LatLon64 array
         fread(shape->ways[i].points, sizeof(LatLon64), shape->ways[i].count, file);
     }
     fclose(file);
+}
+
+struct Rtree* buildTree(Shape* shape, struct Rect* rectArray)
+{
+    struct Rtree* tree = rtree_new();
+
+    for (int i = 0; i < shape->count; i++) {
+        Way* way = &shape->ways[i];
+        struct Rect MBR = convertWayToRect(way);
+
+        rectArray[i] = MBR;
+
+        rtree_insert(tree, MBR.min, MBR.max, way);
+    }
+
+    return tree;
+}
+
+void writeNodeToFile(FILE* file, struct Node* node)
+{
+    fwrite(node, sizeof(node), 1, file);
+    fwrite(node->rects, sizeof(struct Rect), node->count, file);
+
+    if (node->kind == LEAF) {
+        fwrite(node->datas, sizeof(struct Item), node->count, file);
+    }
+    else {
+        for (int i = 0; i < node->count; i++) {
+            writeNodeToFile(file, node->nodes[i]);
+        }
+    }
+
+}
+
+void writeTreeToFile(const char* filename, struct Rtree* tree){
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        perror("File opening failed");
+        return;
+    }
+
+    fwrite(tree, sizeof(struct Rtree), 1, file);
+
+    writeNodeToFile(file, tree->root);
+
+    fclose(file);
+}
+
+
+struct Rtree* readTree(const char* filename) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        perror("File opening failed");
+        return;
+    }
+
+    struct Rtree* tree = malloc(sizeof(struct Rtree));
+    if (!tree) {
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the rtree struct
+    if (fread(tree, sizeof(struct Rtree), 1, file) != 1) {
+        free(tree);
+        fclose(file);
+        return NULL;
+    }
+
+    // Read the nodes recursively
+    tree->root = readTreeNode(file, tree);
+    if (!tree->root) {
+        free(tree);
+        fclose(file);
+        return NULL;
+    }
+
+    fclose(file);
+    return tree;
+}
+
+struct Node* readTreeNode(FILE* file, struct Rtree* tree) {
+    struct Node* node = tree->malloc(sizeof(struct Node));
+    if (!node) {
+        return NULL;
+    }
+
+    // Read the node struct
+    if (fread(node, sizeof(struct Node), 1, file) != 1) {
+        tree->free(node);
+        return NULL;
+    }
+
+    // Read the node data
+    if (fread(node->rects, sizeof(struct Rect), node->count, file) != node->count) {
+        tree->free(node);
+        return NULL;
+    }
+
+    if (node->kind == LEAF) {
+        if (fread(node->datas, sizeof(struct Item), node->count, file) != node->count) {
+            tree->free(node);
+            return NULL;
+        }
+        // Clone the data items
+        for (int i = 0; i < node->count; i++) {
+            DATATYPE cloned_data;
+            if (!tree->item_clone(node->datas[i].data, &cloned_data, tree->udata)) {
+                // Clean up previously cloned items
+                for (int j = 0; j < i; j++) {
+                    tree->item_free(node->datas[j].data, tree->udata);
+                }
+                tree->free(node);
+                return NULL;
+            }
+            node->datas[i].data = cloned_data;
+        }
+    }
+    else {
+        for (int i = 0; i < node->count; i++) {
+            node->nodes[i] = readTreeNode(file, tree);
+            if (!node->nodes[i]) {
+                // Clean up previously read nodes
+                for (int j = 0; j < i; j++) {
+                    //free_node(node->nodes[j], tree);
+                }
+                tree->free(node);
+                return NULL;
+            }
+        }
+    }
+
+    return node;
 }
 
 // Function to convert geographic coordinates to screen coordinates
@@ -135,7 +264,7 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
         gridColor = (Color){ 80, 80, 80, zoom * 25 };
     }
 
-    for (int lon = -180; lon <= 180; lon += 1) {
+    for (int32_t lon = -180; lon <= 180; lon += 1) {
         lonGridTop.longitude = lon;
         lonGridBottom.longitude = lon;
         screenTop = GeoToScreen(lonGridTop, screenWidth, screenHeight, offset, zoom);
@@ -143,7 +272,7 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
         DrawLineV(screenTop, screenBottom, gridColor);
     }
 
-    for (int lat = -90; lat <= 90; lat += 1) {
+    for (int32_t lat = -90; lat <= 90; lat += 1) {
         latGridLeft.latitude = lat;
         latGridRight.latitude = lat;
         screenLeft = GeoToScreen(latGridLeft, screenWidth, screenHeight, offset, zoom);
@@ -169,12 +298,12 @@ void DrawWorldBoundaries(float screenWidth, float screenHeight, Vector2 offset, 
 
 void DrawShape(Shape* shape,float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
 
-    int detailDivideCoeff;
+    int32_t detailDivideCoeff;
     setDetailAmount(zoom, &detailDivideCoeff);
     
     // Draw each way
-    for (int i = 0; i < shape->count; i++) {
-        for (int j = 0; j < shape->ways[i].count - 1; j += detailDivideCoeff) {
+    for (int32_t i = 0; i < shape->count; i++) {
+        for (int32_t j = 0; j < shape->ways[i].count - 1; j += detailDivideCoeff) {
 
             if (j + detailDivideCoeff >= shape->ways[i].count) {
                 Vector2 start = GeoToScreen(shape->ways[i].points[j], screenWidth, screenHeight, offset, zoom);
@@ -198,12 +327,28 @@ void DrawShape(Shape* shape,float screenWidth, float screenHeight, Vector2 offse
     }
 }
 
+void DrawMBR(int count, struct Rect* rectArray, float screenWidth, float screenHeight, Vector2 offset, float zoom) {
+    for (int i = 0; i < count; i++) {
+        LatLon64 topLeft = { rectArray[i].max[1], rectArray[i].min[0]};
+        LatLon64 bottomRight = { rectArray[i].min[1], rectArray[i].max[0]};
+
+        Color mbrColor = YELLOW;
+
+        Vector2 start = GeoToScreen(topLeft, screenWidth, screenHeight, offset, zoom);
+        Vector2 end = GeoToScreen(bottomRight, screenWidth, screenHeight, offset, zoom);
+
+        DrawRectangleLines(start.x, start.y, end.x-start.x, end.y-start.y, YELLOW);
+    }
+
+}
+
 void freeShape(Shape* shape) {
     for (int i = 0; i < shape->count; i++) {
         free(shape->ways[i].points);  // Free the allocated memory for each way's points
     }
     free(shape->ways);  // Free the allocated memory for the ways array
 }
+
 
 void setDetailAmount(float zoom, int* detailDivideCoeff) {
     if (zoom <= 1.0f) {
@@ -235,13 +380,13 @@ void setDetailAmount(float zoom, int* detailDivideCoeff) {
 int main(void) {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 1200;
-    const int screenHeight = 675;
-    int totalLineCount = 0;
+    const int32_t screenWidth = 1200;
+    const int32_t screenHeight = 675;
+    int32_t totalLineCount = 0;
 
     InitWindow(screenWidth, screenHeight, "Vector Map");
 
-    //SetTargetFPS(60);  
+    SetTargetFPS(60);  
     //--------------------------------------------------------------------------------------
 
     // Convert geographical XML data files to binary files
@@ -265,6 +410,11 @@ int main(void) {
     // Read every binary file
     Shape turkiyeBorders;
     readBinaryFile("turkiye_border.bin", &turkiyeBorders);
+
+    struct Rtree* rt;
+    struct Rect* rectArray = (struct Rect*)malloc(turkiyeBorders.count * sizeof(struct Rect));
+    rt = buildTree(&turkiyeBorders, rectArray);
+
     Shape italyBorders;
     readBinaryFile("italy_border.bin", &italyBorders);
     Shape greeceBorders;
@@ -290,7 +440,7 @@ int main(void) {
     Vector2 currentMousePosition = { 0.0f, 0.0f };
     Vector2 delta = { 0.0f, 0.0f };
     Color riverColor = { 0, 121, 241, 30 };
-    int riverAlpha;
+    int32_t riverAlpha;
 
     // Main game loop
     while (!WindowShouldClose()) {  // Detect window close button or ESC key
@@ -335,6 +485,7 @@ int main(void) {
         printf("offset.x = %f\n", offset.x);
         printf("offset.y = %f\n", offset.y);
 
+        
         DrawShape(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
@@ -345,6 +496,7 @@ int main(void) {
 
         //turkiye border
         DrawShape(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        DrawMBR(turkiyeBorders.count, rectArray, screenWidth, screenHeight, offset, zoom);
 
         printf("Total line count is: %d\n", totalLineCount);
 
