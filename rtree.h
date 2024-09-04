@@ -15,7 +15,7 @@
 #define DATATYPE Way*
 #define DIMS 2
 #define NUMTYPE double
-#define MAXITEMS 64
+#define MAXITEMS 6
 
 ////////////////////////////////
 
