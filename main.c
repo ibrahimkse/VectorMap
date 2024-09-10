@@ -1,13 +1,14 @@
 ﻿#define _CRT_SECURE_NO_DEPRECATE
-#include "raylib.h"
-#include "lxml.h"
-#include "rtree.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <float.h>
 #include <math.h>
 
+#include "raylib.h"
+#include "lxml.h"
+#include "rtree.h"
 #include "datatypes.h"
+#include "queue.h"
 
 void setDetailAmount(float zoom, int* detailDivideCoeff);
 struct Node* readTreeNode(FILE* file, struct Rtree* tree);
@@ -59,17 +60,6 @@ Shape LoadGeoDataFromXML(const char* filePath) {
     return shapeBorder;
 }
 
-struct Rect convertWayToRect(Way* way) {
-    struct Rect mbr = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
-    for (int i = 0; i < way->count; i++) {
-        if (way->points[i].latitude < mbr.min[1]) mbr.min[1] = way->points[i].latitude;
-        if (way->points[i].longitude < mbr.min[0]) mbr.min[0] = way->points[i].longitude;
-        if (way->points[i].latitude > mbr.max[1]) mbr.max[1] = way->points[i].latitude;
-        if (way->points[i].longitude > mbr.max[0]) mbr.max[0] = way->points[i].longitude;
-    }
-    return mbr;
-}
-
 void writeBinaryFile(const char* filename, Shape* shape) {
     FILE* file = fopen(filename, "wb");
     if (!file) {
@@ -83,6 +73,8 @@ void writeBinaryFile(const char* filename, Shape* shape) {
     for (int i = 0; i < shape->count; i++) {
         // Write the node count for the way
         fwrite(&shape->ways[i].count, sizeof(int32_t), 1, file);
+        //Write MBR of Rectangle
+        // !!! fwrite(&shape->ways[i].rect, sizeof(int32_t), 1, file);
         // Write LatLon64 array
         fwrite(shape->ways[i].points, sizeof(LatLon64), shape->ways[i].count, file);
     }
@@ -107,6 +99,17 @@ void readBinaryFile(const char* filename, Shape* shape) {
     fclose(file);
 }
 
+struct Rect convertWayToRect(Way* way) {
+    struct Rect mbr = { DBL_MAX, DBL_MAX, -DBL_MAX, -DBL_MAX };
+    for (int i = 0; i < way->count; i++) {
+        if (way->points[i].latitude < mbr.min[1]) mbr.min[1] = way->points[i].latitude;
+        if (way->points[i].longitude < mbr.min[0]) mbr.min[0] = way->points[i].longitude;
+        if (way->points[i].latitude > mbr.max[1]) mbr.max[1] = way->points[i].latitude;
+        if (way->points[i].longitude > mbr.max[0]) mbr.max[0] = way->points[i].longitude;
+    }
+    return mbr;
+}
+
 struct Rtree* buildTree(Shape* shape)
 {
     struct Rtree* tree = rtree_new();
@@ -120,136 +123,24 @@ struct Rtree* buildTree(Shape* shape)
     return tree;
 }
 
-// Forward declaration of the serialize functions
 void writeNodeToFile(FILE* file, const struct Node* node, const struct Rtree* rtree);
 
-void writeRtreeToFile(const char* filename, const struct Rtree* rtree) {
-    FILE* file = fopen(filename, "wb");
-    if (!file) {
-        perror("Error opening file");
-        return;
-    }
-
-    // Write the basic Rtree structure
-    fwrite(&rtree->rect, sizeof(struct Rect), 1, file);
-    fwrite(&rtree->count, sizeof(size_t), 1, file);
-    fwrite(&rtree->height, sizeof(size_t), 1, file);
-
-#ifdef USE_PATHHINT
-    fwrite(rtree->path_hint, sizeof(int), 16, file);
-#endif
-
-    fwrite(&rtree->relaxed, sizeof(bool), 1, file);
-
-    // Write the root node
-    writeNodeToFile(file, rtree->root, rtree);
-
-    // Close the file
-    fclose(file);
+void writeRtreeToFile(const char* filename, const struct Rtree* rtree) 
+{
 }
 
-// Helper function to serialize a Node
-void writeNodeToFile(FILE* file, const struct Node* node, const struct Rtree* rtree) {
-    if (node == NULL) {
-        // Indicate that the node is NULL
-        int null_marker = -1;
-        fwrite(&null_marker, sizeof(int), 1, file);
-        return;
-    }
-
-    // Write the node structure
-    fwrite(&node->rc, sizeof(rc_t), 1, file);
-    fwrite(&node->kind, sizeof(enum Kind), 1, file);
-    fwrite(&node->count, sizeof(int), 1, file);
-    fwrite(node->rects, sizeof(struct Rect), node->count, file);
-
-    // Write node-specific data
-    if (node->kind == LEAF) {
-        // Serialize leaf nodes
-        for (int i = 0; i < node->count; ++i) {
-            // Serialize the Item structure
-            fwrite(&node->datas[i].data, sizeof(DATATYPE), 1, file);
-        }
-    }
-    else {
-        // Serialize branch nodes
-        for (int i = 0; i < node->count; ++i) {
-            writeNodeToFile(file, node->nodes[i], rtree);
-        }
-    }
+void writeNodeToFile(FILE* file, const struct Node* node, const struct Rtree* rtree) 
+{
 }
 
-#include <stdio.h>
-#include <stdlib.h>
-
-// Forward declaration of the deserialization functions
 struct Node* readNodeFromFile(FILE* file, struct Rtree* rtree);
 
 void readRtreeFromFile(const char* filename, struct Rtree* rtree) {
-    FILE* file = fopen(filename, "rb");
-    if (!file) {
-        perror("Error opening file");
-        return;
-    }
 
-    // Read the basic Rtree structure
-    fread(&rtree->rect, sizeof(struct Rect), 1, file);
-    fread(&rtree->count, sizeof(size_t), 1, file);
-    fread(&rtree->height, sizeof(size_t), 1, file);
-
-#ifdef USE_PATHHINT
-    fread(rtree->path_hint, sizeof(int), 16, file);
-#endif
-
-    fread(&rtree->relaxed, sizeof(bool), 1, file);
-
-    // Read the root node
-    rtree->root = readNodeFromFile(file, rtree);
-
-    // Close the file
-    fclose(file);
 }
 
-// Helper function to read a Node
 struct Node* readNodeFromFile(FILE* file, struct Rtree* rtree) {
-    struct Node* node = malloc(sizeof(struct Node));
-    if (!node) {
-        perror("Error allocating memory for Node");
-        return NULL;
-    }
 
-    // Read the node structure
-    fread(&node->rc, sizeof(rc_t), 1, file);
-    fread(&node->kind, sizeof(enum Kind), 1, file);
-    fread(&node->count, sizeof(int), 1, file);
-    fread(node->rects, sizeof(struct Rect), node->count, file);
-
-    // Check if the node is NULL
-    int null_marker;
-    fread(&null_marker, sizeof(int), 1, file);
-    if (null_marker == -1) {
-        free(node);
-        return NULL;
-    }
-    fseek(file, sizeof(int), SEEK_CUR); // Move the file pointer back
-
-    // Read node-specific data
-    if (node->kind == LEAF) {
-        // Deserialize leaf nodes
-        for (int i = 0; i < node->count; ++i) {
-            // Deserialize the Item structure
-            // Adjust based on how you serialized DATATYPE
-            fread(&node->datas[i].data, sizeof(DATATYPE), 1, file);
-        }
-    }
-    else {
-        // Deserialize branch nodes
-        for (int i = 0; i < node->count; ++i) {
-            node->nodes[i] = readNodeFromFile(file, rtree);
-        }
-    }
-
-    return node;
 }
 
 // Function to convert geographic coordinates to screen coordinates
@@ -347,12 +238,12 @@ void DrawShape(Shape* shape,float screenWidth, float screenHeight, Vector2 offse
 
 bool WayIter(const double* min, const double* max, const Way* item, Shape* udata) {
     const Way* way = item;
-    udata->count++; udata->ways = realloc(udata->ways, udata->count * sizeof(Way));
+    udata->count++; 
+    udata->ways = realloc(udata->ways, udata->count * sizeof(Way));
 
     udata->ways[udata->count - 1] = *way;
     return true;
 }
-
 
 void DrawShapeFromTree(struct Rtree* tree, float screenWidth, float screenHeight, Vector2 offset, float zoom, int* totalLineCount, Color color) {
 
@@ -395,22 +286,47 @@ void DrawShapeFromTree(struct Rtree* tree, float screenWidth, float screenHeight
             }
         }
     }
+    free(queryResult.ways);
+    queryResult.count = 0;
+
 }
 
-void DrawMBR(int count, struct Rect* rectArray, float screenWidth, float screenHeight, Vector2 offset, float zoom) {
+void DrawMBR(int count, struct Rect* rectArray, float screenWidth, float screenHeight, Vector2 offset, float zoom, Color color) {
     for (int i = 0; i < count; i++) {
         LatLon64 topLeft = { rectArray[i].max[1], rectArray[i].min[0]};
         LatLon64 bottomRight = { rectArray[i].min[1], rectArray[i].max[0]};
 
-        Color mbrColor = YELLOW;
-
         Vector2 start = GeoToScreen(topLeft, screenWidth, screenHeight, offset, zoom);
         Vector2 end = GeoToScreen(bottomRight, screenWidth, screenHeight, offset, zoom);
 
-        DrawRectangleLines(start.x, start.y, end.x-start.x, end.y-start.y, YELLOW);
+        DrawRectangleLines(start.x, start.y, end.x-start.x, end.y-start.y, color);
     }
-
 }
+
+#ifdef DYNAMIC_MODE
+void DrawTreeMBR(struct Rtree* tree, float screenWidth, float screenHeight, Vector2 offset, float zoom) {
+    struct Node* nodePtr = tree->root;
+    DrawMBR(1, &tree->rect, screenWidth, screenHeight, offset, zoom, ORANGE);
+    Queue* queue = createQueue(tree->count);
+    enqueue(queue, nodePtr);
+
+    const Color colors[] = { RED, GREEN, BLUE, YELLOW };
+    int level = 0; 
+    while (nodePtr->kind == BRANCH) {
+        int levelSize = queue->size;
+        for (int i = 0; i < levelSize; i++) {
+            nodePtr = dequeue(queue);
+            DrawMBR(nodePtr->count, nodePtr->rects, screenWidth, screenHeight, offset, zoom, colors[level % 18]);
+            for (int j = 0; j < nodePtr->count; j++) {
+                enqueue(queue, nodePtr->nodes[j]);
+            }
+        }
+        level++;
+    }
+    free(queue);
+}
+#endif
+
 
 void freeShape(Shape* shape) {
     for (int i = 0; i < shape->count; i++) {
@@ -418,7 +334,6 @@ void freeShape(Shape* shape) {
     }
     free(shape->ways);  // Free the allocated memory for the ways array
 }
-
 
 void setDetailAmount(float zoom, int* detailDivideCoeff) {
     if (zoom <= 1.0f) {
@@ -442,8 +357,6 @@ void setDetailAmount(float zoom, int* detailDivideCoeff) {
     else  {
         *detailDivideCoeff = 1;
     }
-    *detailDivideCoeff = 1.0;
-
 }
 
 //------------------------------------------------------------------------------------
@@ -497,22 +410,22 @@ int main(void) {
     Shape rivers;
     readBinaryFile("rivers.bin", &rivers);
 
-    struct Rtree* turkey_tree;
-    turkey_tree = buildTree(&turkiyeBorders);
-    struct Rtree* italy_tree;
-    italy_tree = buildTree(&italyBorders);
-    struct Rtree* greece_tree;
-    greece_tree = buildTree(&greeceBorders);
-    struct Rtree* bulgaria_tree;
-    bulgaria_tree = buildTree(&bulgariaBorders);
-    struct Rtree* cyprus_tree;
-    cyprus_tree = buildTree(&cyprusBorders);
-    struct Rtree* russia_tree;
-    russia_tree = buildTree(&russiaBorders);
-    struct Rtree* provinces_tree;
-    provinces_tree = buildTree(&provinces);
-    struct Rtree* rivers_tree;
-    rivers_tree = buildTree(&rivers);
+    struct Rtree* turkeyTree;
+    turkeyTree = buildTree(&turkiyeBorders);
+    struct Rtree* italyTree;
+    italyTree = buildTree(&italyBorders);
+    struct Rtree* greeceTree;
+    greeceTree = buildTree(&greeceBorders);
+    struct Rtree* bulgariaTree;
+    bulgariaTree = buildTree(&bulgariaBorders);
+    struct Rtree* cyprusTree;
+    cyprusTree = buildTree(&cyprusBorders);
+    struct Rtree* russiaTree;
+    russiaTree = buildTree(&russiaBorders);
+    struct Rtree* provincesTree;
+    provincesTree = buildTree(&provinces);
+    struct Rtree* riversTree;
+    riversTree = buildTree(&rivers);
 
     // Initialize pan and zoom
     Vector2 offset = { 0.0f, 0.0f };
@@ -569,29 +482,28 @@ int main(void) {
         printf("offset.x = %f\n", offset.x);
         printf("offset.y = %f\n", offset.y);
 
-        //DrawShapeFromTree(rt, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
         /*DrawShape(&italyBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&greeceBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&bulgariaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&cyprusBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&russiaBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
         DrawShape(&provinces, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawShape(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);*/
-        //DrawShape(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);
+        DrawShape(&rivers, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+        DrawShape(&turkiyeBorders, screenWidth, screenHeight, offset, zoom, &totalLineCount, RED);*/
 
-        DrawShapeFromTree(turkey_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawShapeFromTree(greece_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawShapeFromTree(bulgaria_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawShapeFromTree(cyprus_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawShapeFromTree(russia_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
-        DrawShapeFromTree(provinces_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
-        DrawShapeFromTree(rivers_tree, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
-        
-
+        DrawShapeFromTree(turkeyTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        DrawShapeFromTree(greeceTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShapeFromTree(bulgariaTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShapeFromTree(cyprusTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShapeFromTree(russiaTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, MAGENTA);
+        DrawShapeFromTree(riversTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, riverColor);
+        DrawShapeFromTree(provincesTree, screenWidth, screenHeight, offset, zoom, &totalLineCount, RAYWHITE);
+        //DrawTreeMBR(provincesTree, screenWidth, screenHeight, offset, zoom);
+               
         printf("Total line count is: %d\n", totalLineCount);
 
         float ms = GetFrameTime() * 1e3;
-        DrawText( TextFormat("%f" , ms ) , 100,100, 32 , GREEN);
+        DrawText( TextFormat("%f" , ms ) , 5,5, 28 , GREEN);
         
         //DrawFPS(10, 10);
         EndDrawing();
@@ -608,6 +520,15 @@ int main(void) {
     freeShape(&russiaBorders);
     freeShape(&provinces);
     freeShape(&rivers);
+
+    /*rtree_free(turkeyTree);
+    rtree_free(italyTree);
+    rtree_free(greeceTree);
+    rtree_free(bulgariaTree);
+    rtree_free(cyprusTree);
+    rtree_free(russiaTree);
+    rtree_free(provincesTree);
+    rtree_free(riversTree);*/
     CloseWindow();     // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
 

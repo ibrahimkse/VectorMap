@@ -2,11 +2,14 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
+#ifndef RTREE_H
+#define RTREE_H
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
 
 #include "datatypes.h"
+#include "config.h"
 
 #define RTREE_NOATOMICS
 
@@ -15,21 +18,17 @@
 #define DATATYPE Way*
 #define DIMS 2
 #define NUMTYPE double
-#define MAXITEMS 6
+#define MAXITEMS 3
+#define MAXNODES 10000
 
 ////////////////////////////////
 
 // used for splits
-#define MINITEMS_PERCENTAGE 10
+#define MINITEMS_PERCENTAGE 30
 #define MINITEMS ((MAXITEMS) * (MINITEMS_PERCENTAGE) / 100 + 1)
 
 #ifndef RTREE_NOPATHHINT
 #define USE_PATHHINT
-#endif
-
-#ifdef RTREE_MAXITEMS
-#undef MAXITEMS
-#define MAXITEMS RTREE_MAXITEMS
 #endif
 
 #ifdef RTREE_NOATOMICS
@@ -56,7 +55,6 @@ static int rc_load(rc_t* ptr, bool relaxed) {
         return atomic_load_explicit(ptr, memory_order_relaxed);
     }
     else {
-        return atomic_load(ptr);
     }
 }
 static int rc_fetch_sub(rc_t* ptr, int delta) {
@@ -66,6 +64,14 @@ static int rc_fetch_add(rc_t* ptr, int delta) {
     return atomic_fetch_add(ptr, delta);
 }
 #endif
+
+/*
+There are two function definitions of RTree. One of them uses dynamic memory
+allocation while other uses static memory allocation. You can switch to dynamic
+one by defining DYNAMIC_MODE, and switch to static one by defining STATIC_MODE.
+*/
+
+#ifdef DYNAMIC_MODE
 
 enum Kind {
     LEAF = 1,
@@ -82,7 +88,7 @@ struct Item {
 };
 
 struct Node {
-    rc_t rc;            // reference counter for copy-on-write
+    rc_t rc;            // reference counter for copy-on-write. (integer)
     enum Kind kind;     // LEAF or BRANCH
     int count;          // number of rects
     struct Rect rects[MAXITEMS];
@@ -112,21 +118,21 @@ struct Rtree {
 // rtree_new returns a new rtree
 //
 // Returns NULL if the system is out of memory.
-struct Rtree *rtree_new(void);
+struct Rtree* rtree_new(void);
 
 
 // rtree_new returns a new rtree using a custom allocator
 //
 // Returns NULL if the system is out of memory.
-struct Rtree *rtree_new_with_allocator(void *(*malloc)(size_t), void (*free)(void*));
+struct Rtree* rtree_new_with_allocator(void* (*malloc)(size_t), void (*free)(void*));
 
 // rtree_free frees an rtree
-void rtree_free(struct Rtree *tr);
+void rtree_free(struct Rtree* tr);
 
 // rtree_clone makes an instant copy of the btree.
 //
 // This operation uses shadowing / copy-on-write.
-struct Rtree *rtree_clone(struct Rtree *tr);
+struct Rtree* rtree_clone(struct Rtree* tr);
 
 // rtree_set_item_callbacks sets the item clone and free callbacks that will be
 // called internally by the rtree when items are inserted and removed.
@@ -136,15 +142,17 @@ struct Rtree *rtree_clone(struct Rtree *tr);
 //
 // The clone function should return true if the clone succeeded or false if the
 // system is out of memory.
-void rtree_set_item_callbacks(struct Rtree *tr,
-    bool (*clone)(const void *item, void **into, void *udata), 
-    void (*free)(const void *item, void *udata));
+
+void rtree_set_item_callbacks(struct Rtree* tr,
+    bool (*clone)(const void* item, void** into, void* udata),
+    void (*free)(const void* item, void* udata));
 
 // rtree_set_udata sets the user-defined data. 
 //
 // This should be called once after rtree_new() and is only used for 
 // the item callbacks as defined in rtree_set_item_callbacks().
-void rtree_set_udata(struct Rtree *tr, void *udata);
+
+void rtree_set_udata(struct Rtree* tr, void* udata);
 
 // rtree_insert inserts an item into the rtree. 
 //
@@ -157,26 +165,26 @@ void rtree_set_udata(struct Rtree *tr, void *udata);
 // When inserting points, the max coordinates is optional (set to NULL).
 //
 // Returns false if the system is out of memory.
-bool rtree_insert(struct Rtree *tr, const double *min, const double *max, const void *data);
+bool rtree_insert(struct Rtree* tr, const double* min, const double* max, const void* data);
 
 
 // rtree_search searches the rtree and iterates over each item that intersect
 // the provided rectangle.
 //
 // Returning false from the iter will stop the search.
-void rtree_search(const struct Rtree *tr, const double *min, const double *max,
-    bool (*iter)(const double *min, const double *max, const void *data, void *udata), 
-    void *udata);
+void rtree_search(const struct Rtree* tr, const double* min, const double* max,
+    bool (*iter)(const double* min, const double* max, const void* data, void* udata),
+    void* udata);
 
 // rtree_scan iterates over every item in the rtree.
 //
 // Returning false from the iter will stop the scan.
-void rtree_scan(const struct Rtree *tr,
-    bool (*iter)(const double *min, const double *max, const void *data, void *udata), 
-    void *udata);
+void rtree_scan(const struct Rtree* tr,
+    bool (*iter)(const double* min, const double* max, const void* data, void* udata),
+    void* udata);
 
 // rtree_count returns the number of items in the rtree.
-size_t rtree_count(const struct Rtree *tr);
+size_t rtree_count(const struct Rtree* tr);
 
 // rtree_delete deletes an item from the rtree. 
 //
@@ -185,7 +193,7 @@ size_t rtree_count(const struct Rtree *tr);
 // data. The first item that is found is deleted.
 //
 // Returns false if the system is out of memory.
-bool rtree_delete(struct Rtree *tr, const double *min, const double *max, const void *data);
+bool rtree_delete(struct Rtree* tr, const double* min, const double* max, const void* data);
 
 // rtree_delete_with_comparator deletes an item from the rtree.
 // This searches the tree for an item that is contained within the provided
@@ -193,12 +201,92 @@ bool rtree_delete(struct Rtree *tr, const double *min, const double *max, const 
 // a compare function. The first item that is found is deleted.
 //
 // Returns false if the system is out of memory.
-bool rtree_delete_with_comparator(struct Rtree *tr, const double *min, 
-    const double *max, const void *data,
-    int (*compare)(const void *a, const void *b, void *udata),
-    void *udata);
+bool rtree_delete_with_comparator(struct Rtree* tr, const double* min,
+    const double* max, const void* data,
+    int (*compare)(const void* a, const void* b, void* udata),
+    void* udata);
 
 // rtree_opt_relaxed_atomics activates memory_order_relaxed for all atomic
 // loads. This may increase performance for single-threaded programs.
-// Optionally, define RTREE_NOATOMICS to disbale all atomics.
-void rtree_opt_relaxed_atomics(struct Rtree *tr);
+// Optionally, define RTREE_NOATOMICS to disable all atomics.
+void rtree_opt_relaxed_atomics(struct Rtree* tr);
+
+#endif // DYNAMIC_MODE
+
+#ifdef STATIC_MODE
+
+/*
+* Static implementation contains static structs, insert and search
+* function since these are necessary functions to take way objects.
+* Dynamical implementations of other functions are preserved and
+* static implementation can be expanded if necessary.
+*/
+
+#define MAXNODES 50000
+
+enum Kind {
+    LEAF = 1,
+    BRANCH = 2,
+};
+
+struct Rect {
+    NUMTYPE min[DIMS];
+    NUMTYPE max[DIMS];
+};
+
+struct Item {
+    const DATATYPE data;
+};
+
+struct Node {
+    rc_t rc;            // reference counter for copy-on-write.
+    enum Kind kind;     // LEAF or BRANCH
+    int count;          // number of rects
+    struct Rect rects[MAXITEMS];
+    struct Item datas[MAXITEMS];
+};
+
+struct Rtree {
+    struct Rect rect;
+    struct Node nodes[MAXNODES];
+    size_t count;
+    size_t height;
+    int path_hint[16];
+};
+
+// rtree_new returns a new rtree
+//
+// Returns NULL if the system is out of memory.
+struct Rtree* rtree_new(void);
+
+// rtree_insert inserts an item into the rtree. 
+//
+// This operation performs a copy of the data that is pointed to in the second
+// and third arguments. The R-tree expects a rectangle, which is two arrays of
+// doubles. The first N values as the minimum corner of the rect, and the next
+// N values as the maximum corner of the rect, where N is the number of
+// dimensions.
+//
+// When inserting points, the max coordinates is optional (set to NULL).
+//
+// Returns false if the system is out of memory.
+bool rtree_insert(struct Rtree* tr, const double* min, const double* max, const void* data);
+
+
+// rtree_search searches the rtree and iterates over each item that intersect
+// the provided rectangle.
+//
+// Returning false from the iter will stop the search.
+void rtree_search(const struct Rtree* tr, const double* min, const double* max,
+    bool (*iter)(const double* min, const double* max, const void* data, void* udata),
+    void* udata);
+
+// rtree_scan iterates over every item in the rtree.
+//
+// Returning false from the iter will stop the scan.
+void rtree_scan(const struct Rtree* tr,
+    bool (*iter)(const double* min, const double* max, const void* data, void* udata),
+    void* udata);
+
+#endif // STATIC_MODE
+#endif // !RTREE_H

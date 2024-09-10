@@ -140,8 +140,11 @@
     <ClCompile Include="rtree.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="config.h" />
     <ClInclude Include="datatypes.h" />
+    <ClInclude Include="queue.h" />
     <ClInclude Include="rtree.h" />
+    <ClInclude Include="stack.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

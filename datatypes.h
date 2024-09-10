@@ -8,10 +8,18 @@ typedef struct {
     double longitude;
 } LatLon64;
 
+/*typedef struct
+{
+    Vector2 leftBot;
+    Vector2 rightTop;
+    float rotation;
+}MBR;
+*/
 typedef struct {
     LatLon64* points;
     int32_t count;
-    int32_t id;
+    int32_t id; //? 
+    //MBR mbr;
 } Way;
 
 typedef struct {
